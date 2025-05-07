@@ -1,0 +1,27 @@
+
+services:
+
+  model-llama3.2-model:
+    provider:
+      type: model
+      options:
+        model: ai/llama3.2
+
+  mcp-gateway:
+    provider:
+      type: mcp
+      options:
+        tools: brave_web_search,get_article,get_summary,get_related_topics,send-email
+
+  research-agent:
+    image: jimclark106/agent:latest
+    depends_on:
+      - model-llama3.2-model
+      - mcp-gateway
+    command:
+      - |
+        Here's how I want you interact with the world. When you see a slack message
+        in channel #research, I want you to grab the message and research it using
+        the wikipedia and brave search tools. When finished, summarize your findings
+        in the channel.
+
