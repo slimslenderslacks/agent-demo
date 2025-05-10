@@ -29,10 +29,7 @@
          (or (:url request) "https://api.openai.com/v1/chat/completions")
          (merge
           {:body (json/encode b)
-           :headers (merge (merge {"Authorization" (format "Bearer %s" (or
-                                                                        (openai-api-key)
-                                                                        (System/getenv "OPENAI_API_KEY")))
-                                   "Content-Type" "application/json"}
+           :headers (merge (merge {"Content-Type" "application/json"}
                                   (when false
                                     {"Authorization" (format "Bearer %s" (or
                                                                           (openai-api-key)

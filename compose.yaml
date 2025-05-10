@@ -20,8 +20,8 @@ services:
       - mcp-gateway
     command:
       - |
-        Here's how I want you interact with the world. When you see a slack message
-        in channel #research, I want you to grab the message and research it using
-        the wikipedia and brave search tools. When finished, summarize your findings
-        in the channel.
+        Use any of the available tools to research the topic
+        "the Model Context Protocol (MCP) and its applications in AI agents"
+        and when complete, send an email to slimslenderslacks@gmail.com with 
+        the results and the subject "MCP Research Results".
 

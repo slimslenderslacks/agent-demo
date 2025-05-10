@@ -1,10 +1,9 @@
 (ns docker.main
   (:require
-   [mcp]
    [clojure.core.async :as async]
+   [clojure.pprint :refer [pprint]]
    [graph]
-   [clj-http.client :as http]
-   [cheshire.core :as json])
+   [mcp])
   (:gen-class))
 
 (def local-url
@@ -40,16 +39,31 @@
 ;; MODEL-LLAMA3.2-MODEL_URL=http://model-runner.docker.internal/engines/v1/
 (defn -main [& args]
   (println (System/getenv))
-  (let [{endpoint "MCP-GATEWAY_ENDPOINT" 
-         url "MODEL-LLAMA3.2-MODEL_URL" 
+  (let [{endpoint "MCP-GATEWAY_ENDPOINT"
+         url "MODEL-LLAMA3.2-MODEL_URL"
          model "MODEL-LLAMA3.2-MODEL_MODEL"} (System/getenv)
         client (mcp/create-client endpoint)]
+    (println (format "Available Models: ([%s,%s])" url model))
     (async/<!!
-      (async/go
-        (println
-          (async/<! (.initialize client)))
-        (println
-          (->>
-            (async/<! (.list-tools client))
-            :tools
-            (map mcp/->tool-functions)))))))
+     (async/go
+       (println (format "initializing MCP client (gateway %s): \n" endpoint)
+                (async/<! (.initialize client)))
+       (let [tools (:tools (async/<! (.list-tools client)))]
+         (println "tools to use: "
+                  (->> tools
+                       (map mcp/->tool-functions)
+                       (map (comp :name :function))))
+         (println (format "user %s\nrun agent: (streaming disabled) ..." (first args)))
+         (pprint
+           (:messages
+             (async/<!
+               (graph/stream
+                 (graph/chat-with-tools {})
+                 {:opts {:url (format "%s/chat/completions" url)
+                         :model model
+                         :parallel_tool_calls false
+                         :stream false
+                         :client client}
+                  :functions (->> tools
+                                  (map mcp/->tool-functions))
+                  :messages [{:role "user" :content (first args)}]})))))))))

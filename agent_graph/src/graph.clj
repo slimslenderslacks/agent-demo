@@ -26,7 +26,7 @@
       functions  definition for functions referenced in the initial prompt
       opts       for running the model
     returns channel that will contain an coll of messages"
-  [{:keys [messages functions metadata] {:keys [url model stream level]} :opts}]
+  [{:keys [messages functions metadata] {:keys [url model stream level parallel_tool_calls]} :opts}]
   (let [[c h] (openai/chunk-handler)
         request (merge
                  (dissoc metadata :agent :host-dir :workdir :prompt-format :description :name :parameter-values :arguments :resources :defs) ; TODO should we just select relevant keys instead of removing bad ones
@@ -36,6 +36,7 @@
                  ;; overrides from cli opts, NOT from metadata
                  (when url {:url url})
                  (when model {:model model})
+                 (when parallel_tool_calls {:parallel_tool_calls parallel_tool_calls})
                  ;; stream is a special case where we don't want to allow override of the metadata val if the cli val is set 
                  (when (and stream (nil? (:stream metadata))) {:stream stream}))]
     (try

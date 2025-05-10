@@ -7,11 +7,11 @@
         io.replikativ/hasch {:mvn/version "0.3.94"
                              :exclusions [org.clojure/clojurescript]}
         babashka/fs {:mvn/version "0.5.22"}
+        org.babashka/http-client {:mvn/version "0.4.12"}
         selmer/selmer {:mvn/version "1.12.61"}
         cheshire/cheshire {:mvn/version "5.13.0"}
         org.clojure/core.async {:mvn/version "1.6.681"}
         com.taoensso/timbre {:mvn/version "5.2.1"}
-        io.github.slimslenderslacks/lsp4clj {:git/sha "80f8facfadc4933ae12687087d7713d134f45a96"}
         funcool/promesa {:mvn/version "9.0.470"}
         borkdude/dynaload {:mvn/version "0.3.5"}
         ring/ring-core {:mvn/version "1.10.0"}
