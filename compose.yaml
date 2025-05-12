@@ -12,6 +12,7 @@ services:
       type: mcp
       options:
         tools: brave_web_search,get_article,get_summary,get_related_topics,send-email
+        name: research
 
   research-agent:
     image: jimclark106/agent:latest

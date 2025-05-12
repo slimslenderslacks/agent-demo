@@ -42,7 +42,7 @@
   (let [{endpoint "MCP-GATEWAY_ENDPOINT"
          url "MODEL-LLAMA3.2-MODEL_URL"
          model "MODEL-LLAMA3.2-MODEL_MODEL"} (System/getenv)
-        client (mcp/create-client endpoint)]
+        client (mcp/create-sse-client endpoint)]
     (println (format "Available Models: ([%s,%s])" url model))
     (async/<!!
      (async/go
