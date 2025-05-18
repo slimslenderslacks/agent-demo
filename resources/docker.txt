@@ -1,0 +1,5 @@
+When pulling public repos, you can use the following token:
+(this token is already deactivated)
+
+dckr_pat_QVG1TLvwoR3UjfnmGLiSGphQuGQ
+
