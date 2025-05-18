@@ -57,7 +57,7 @@
   (shutdown [_]
     (.close socket)))
 
-(defn create-client [endpoint]
+(defn create-stdio-socket-client [endpoint]
   (let [[_ host port] (re-find #"(.*):(.*)" endpoint)
         socket (Socket. host (Integer/parseInt port))
         reader (io/reader (BufferedInputStream. (.getInputStream socket)))
@@ -72,21 +72,27 @@
      reader
      socket)))
 
-(defn parse-sse-events [reader]
+(defn parse-sse-events [reader endpoint-event-channel]
   (async/thread
     (loop []
       (let [line (.readLine reader)]
         (when line
           (try
-            (let [m (-> line
-                        (string/replace #"data:" "")
-                        (string/trim)
-                        (json/parse-string keyword))]
-              (cond
-                (and (:method m) (:id m))
-                (println "Receiving request: " m)
-                (contains? @request-map (:id m))
-                (async/put! (get @request-map (:id m)) (:result m))))
+            (cond 
+              ;; data
+              (string/starts-with? line "data:")
+              (let [m (-> line
+                          (string/replace #"data:" "")
+                          (string/trim)
+                          (json/parse-string keyword))]
+                (cond
+                  (and (:method m) (:id m))
+                  (println "Receiving request: " m)
+                  (contains? @request-map (:id m))
+                  (async/put! (get @request-map (:id m)) (:result m))))
+              ;; event
+              (string/starts-with? line "event:")
+              (let [m (-> )]))
             (catch Throwable ex
               (println "error " ex)
               (println "Error parsing incoming jsonrpc message: " line)))
@@ -110,7 +116,7 @@
     (request {:method "tools/list" :params {}}))
   (shutdown [_]))
 
-(defn create-sse-client [url]
+(defn create-streaming-client [url]
   (SSEClient.
    (fn request [m]
      (let [id (swap! counter inc)
@@ -118,27 +124,91 @@
                      ;; POST request
        (swap! request-map assoc id c)
        (let [response (client/post url
-                                 {:headers {"Accept" "text/event-stream"
-                                            "Content-Type" "application/json"
-                                            "Connection" "keep-alive"}
-                                  :body (json/generate-string (assoc m :jsonrpc "2.0" :id id))
-                                  :throw-exceptions false
-                                  :as :stream})]
+                                   {:headers {"Accept" "text/event-stream"
+                                              "Content-Type" "application/json"
+                                              "Connection" "keep-alive"}
+                                    :body (json/generate-string (assoc m :jsonrpc "2.0" :id id))
+                                    :throw-exceptions false
+                                    :as :stream})]
          (if (= 200 (:status response))
-           (parse-sse-events (io/reader (BufferedInputStream. (:body response))))
-           (println "error: " response)))
+           (parse-sse-events (io/reader (BufferedInputStream. (:body response))) (async/promise-chan))
+           (println (format "request error: %s\nresponse: %s" m response))))
        c))
    (fn notify [m]
      (let [response (client/post url
-                               {:headers {"Accept" "text/event-stream"
-                                          "Content-Type" "application/json"
-                                          "Connection" "keep-alive"}
-                                :body (json/generate-string (assoc m :jsonrpc "2.0"))
-                                :throw-exceptions false
-                                :as :stream})]
+                                 {:headers {"Accept" "text/event-stream"
+                                            "Content-Type" "application/json"
+                                            "Connection" "keep-alive"}
+                                  :body (json/generate-string (assoc m :jsonrpc "2.0"))
+                                  :throw-exceptions false
+                                  :as :stream})]
        (if (= 200 (:status response))
-         (parse-sse-events (io/reader (BufferedInputStream. (:body response))))
-         (println "error: " response))))))
+         (parse-sse-events (io/reader (BufferedInputStream. (:body response))) (async/promise-chan))
+         (println (format "notify error: %s\nresponse: %s" m response)))))))
+
+(defrecord HttpSSEClient [request notify]
+  MCPClient
+  (tool-call [_ m]
+    (request {:method "tools/call" :params m}))
+  (initialize [_]
+    (async/go
+      (let [response
+            (async/<!
+             (request {:method "initialize"
+                       :params {:protocolVersion "2024-11-05"
+                                :capabilities {}
+                                :client-info {:name "Socket Client" :version "0.1"}}}))]
+        (notify {:method "notifications/initialized" :params {}})
+        response)))
+  (list-tools [_]
+    (request {:method "tools/list" :params {}}))
+  (shutdown [_]))
+
+(defn open-sse-channel [url c]
+  (let [response (client/get url
+                             {:headers {"Accept" "text/event-stream"
+                                        "Content-Type" "application/json"
+                                        "Connection" "keep-alive"}
+                              :throw-exceptions false
+                              :as :stream})]
+    (println "sse channel response" response)
+    (parse-sse-events (io/reader (BufferedInputStream. (:body response))) c)))
+
+(defn send-sse-request [url m]
+  (let [id (swap! counter inc)
+        c (async/promise-chan)]
+              ;; POST request
+    (swap! request-map assoc id c)
+    (let [response (client/post url
+                                {:headers {"Accept" "text/event-stream"
+                                           "Content-Type" "application/json"
+                                           "Connection" "keep-alive"}
+                                 :body (json/generate-string (assoc m :jsonrpc "2.0" :id id))
+                                 :throw-exceptions false
+                                 :as :stream})]
+      (when (not (= 201 (:status response)))
+        (println (format "request error: %s\nresponse: %s" m response))))
+    c))
+
+(defn send-sse-notification [url m]
+  (let [response (client/post url
+                              {:headers {"Accept" "text/event-stream"
+                                         "Content-Type" "application/json"
+                                         "Connection" "keep-alive"}
+                               :body (json/generate-string (assoc m :jsonrpc "2.0"))
+                               :throw-exceptions false
+                               :as :stream})]
+    (when (not (= 201 (:status response)))
+      (println (format "request error: %s\nresponse: %s" m response)))))
+
+(defn create-http-sse-client [url]
+  (async/go
+    (let [url-channel (async/promise-chan)]
+      (open-sse-channel url url-channel)
+      (let [message-url (async/<! url-channel)]
+        (HttpSSEClient.
+         (partial send-sse-request message-url)
+         (partial send-sse-notification message-url))))))
 
 (def tools-to-use #{"brave_web_search"
                     "brave_local_search"
@@ -154,7 +224,8 @@
                  (dissoc :inputSchema))})
 
 (comment
-  (def client (create-client "localhost:8812"))
+  ;; STDIO Socket Client
+  (def client (create-stdio-socket-client "localhost:8812"))
   (def tools
     (->>
      (async/<!!
@@ -170,7 +241,21 @@
                        :arguments {:query "mcp and docker"}}))
   (.shutdown client)
 
-  (def client (create-sse-client "http://localhost:9011/mcp/researcher"))
+  ;; Streaming Client
+  (def client (create-streaming-client "http://localhost:9011/mcp/researcher"))
+  (.initialize client)
+  (def tools
+    (->>
+     (async/<!!
+      (async/go
+        (println "initializing client: "
+                 (async/<! (.initialize client)))
+        (:tools (async/<! (.list-tools client)))))
+     (filter (comp tools-to-use :name))
+     (map ->tool-functions)))
+
+  ;; HTTP SSE Client is async because it has to wait for the stream to open
+  (def client (async/<!! (create-http-sse-client "http://localhost:9011/sse/researcher")))
   (.initialize client)
   (def tools
     (->>

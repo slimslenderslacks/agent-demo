@@ -10,7 +10,7 @@
   "http://localhost:12434/engines/llama.cpp/v1/chat/completions")
 
 (comment
-  (def client (mcp/create-client "localhost:8811"))
+  (def client (mcp/create-stdio-socket-client "localhost:8811"))
   (.initialize client)
   (def tools
     (->>
@@ -40,9 +40,9 @@
 (defn -main [& args]
   (println (System/getenv))
   (let [{endpoint "MCP-GATEWAY_ENDPOINT"
-         url "MODEL-LLAMA3.2-MODEL_URL"
-         model "MODEL-LLAMA3.2-MODEL_MODEL"} (System/getenv)
-        client (mcp/create-sse-client endpoint)]
+         url "LLAMA3.2_URL"
+         model "LLAMA3.2_MODEL"} (System/getenv)
+        client (mcp/create-streaming-client endpoint)]
     (println (format "Available Models: ([%s,%s])" url model))
     (async/<!!
      (async/go

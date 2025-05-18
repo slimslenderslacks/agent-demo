@@ -1,11 +1,39 @@
 
 services:
 
-  model-llama3.2-model:
+  llama3.2:
     provider:
       type: model
       options:
         model: ai/llama3.2
+
+  gemma:
+    provider:
+      type: model
+      options:
+        model: ai/gemma3
+
+  #agents:
+    #image: demo/agents
+    #ports:
+      #- "7777:7777"
+    #environment:
+      #- OPENAI_API_KEY=$OPENAI_API_KEY
+    #volumes:
+      #- ./agents.yaml:/agents.yaml
+    #depends_on:
+      #- mcp-gateway
+      #- llama3.2
+      #- gemma
+
+  #agents-ui:
+    #image: demo/ui
+    #ports:
+      #- "3000:3000"
+    #environment:
+      #- AGENTS_URL=http://localhost:7777
+    #depends_on:
+      #- agents
 
   mcp-gateway:
     provider:
@@ -17,7 +45,7 @@ services:
   research-agent:
     image: jimclark106/agent:latest
     depends_on:
-      - model-llama3.2-model
+      - llama3.2
       - mcp-gateway
     command:
       - |
