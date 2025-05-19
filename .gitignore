@@ -1,0 +1,8 @@
+/agent_graph/.cpcache/
+/agent_graph/.clj-kondo/
+/agent_graph/.direnv/
+/agent_graph/.lsp/
+/agent_graph/.nrepl-port
+/.lsp/
+/.clj-kondo/
+/.DS_Store

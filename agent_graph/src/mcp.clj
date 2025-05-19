@@ -23,6 +23,9 @@
   (list-tools [this])
   (shutdown [list]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Socket Client
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defrecord Client [request notify reader socket]
   MCPClient
   (tool-call [_ m]
@@ -72,31 +75,10 @@
      reader
      socket)))
 
-(defn parse-sse-events [reader endpoint-event-channel]
-  (async/thread
-    (loop []
-      (let [line (.readLine reader)]
-        (when line
-          (try
-            (cond 
-              ;; data
-              (string/starts-with? line "data:")
-              (let [m (-> line
-                          (string/replace #"data:" "")
-                          (string/trim)
-                          (json/parse-string keyword))]
-                (cond
-                  (and (:method m) (:id m))
-                  (println "Receiving request: " m)
-                  (contains? @request-map (:id m))
-                  (async/put! (get @request-map (:id m)) (:result m))))
-              ;; event
-              (string/starts-with? line "event:")
-              (let [m (-> )]))
-            (catch Throwable ex
-              (println "error " ex)
-              (println "Error parsing incoming jsonrpc message: " line)))
-          (recur))))))
+(declare parse-sse-events)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Streaming
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defrecord SSEClient [request notify]
   MCPClient
@@ -109,7 +91,7 @@
              (request {:method "initialize"
                        :params {:protocolVersion "2024-11-05"
                                 :capabilities {}
-                                :client-info {:name "Socket Client" :version "0.1"}}}))]
+                                :client-info {:name "Streaming Client" :version "0.1"}}}))]
         (notify {:method "notifications/initialized" :params {}})
         response)))
   (list-tools [_]
@@ -146,6 +128,10 @@
          (parse-sse-events (io/reader (BufferedInputStream. (:body response))) (async/promise-chan))
          (println (format "notify error: %s\nresponse: %s" m response)))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Http/SSE client
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defrecord HttpSSEClient [request notify]
   MCPClient
   (tool-call [_ m]
@@ -157,7 +143,7 @@
              (request {:method "initialize"
                        :params {:protocolVersion "2024-11-05"
                                 :capabilities {}
-                                :client-info {:name "Socket Client" :version "0.1"}}}))]
+                                :client-info {:name "Http/SSE Client" :version "0.1"}}}))]
         (notify {:method "notifications/initialized" :params {}})
         response)))
   (list-tools [_]
@@ -186,6 +172,7 @@
                                  :body (json/generate-string (assoc m :jsonrpc "2.0" :id id))
                                  :throw-exceptions false
                                  :as :stream})]
+      (println response)
       (when (not (= 201 (:status response)))
         (println (format "request error: %s\nresponse: %s" m response))))
     c))
@@ -205,10 +192,56 @@
   (async/go
     (let [url-channel (async/promise-chan)]
       (open-sse-channel url url-channel)
-      (let [message-url (async/<! url-channel)]
+      (let [message-url (format "http://localhost:9011%s" (async/<! url-channel))]
+        (println "use message url: " message-url)
         (HttpSSEClient.
          (partial send-sse-request message-url)
          (partial send-sse-notification message-url))))))
+
+(defn json-or-string [s]
+  (try
+    (json/parse-string s keyword)
+    (catch Throwable _
+      s)))
+
+(defn parse-sse-events
+  "parse an SSE event-stream
+     could be either streaming or Http/SSE
+     resolves request promises
+     assumes message events but also looks for endpoint events (http/sse only)"
+  [reader endpoint-event-channel]
+  (async/thread
+    (loop [state :message]
+      (let [line (.readLine reader)]
+        (if line
+          (cond
+            ;; data
+            (string/starts-with? line "data:")
+            (let [m (-> line
+                        (string/replace #"data:" "")
+                        (string/trim)
+                        (json-or-string))]
+              (cond
+                (= state :endpoint)
+                (async/put! endpoint-event-channel m) 
+                (and (:method m) (:id m))
+                (println "WARN: Received request: " m)
+                (contains? @request-map (:id m))
+                (async/put! (get @request-map (:id m)) (:result m)))
+              (recur :message))
+              ;; event
+            (string/starts-with? line "event:")
+            (let [type (-> line
+                           (string/replace #"event:" "")
+                           (string/trim))]
+              (if (= type "endpoint")
+                (recur :endpoint)
+                (recur :message)))
+            :else
+            (recur :message))
+          (do
+            (println "sse stream closing")
+            :done))))))
 
 (def tools-to-use #{"brave_web_search"
                     "brave_local_search"
@@ -256,7 +289,7 @@
 
   ;; HTTP SSE Client is async because it has to wait for the stream to open
   (def client (async/<!! (create-http-sse-client "http://localhost:9011/sse/researcher")))
-  (.initialize client)
+  (println "done" (async/<!! (.initialize client)))
   (def tools
     (->>
      (async/<!!
