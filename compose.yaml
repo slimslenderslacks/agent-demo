@@ -13,27 +13,11 @@ services:
       options:
         model: ai/gemma3
 
-  #agents:
-    #image: demo/agents
-    #ports:
-      #- "7777:7777"
-    #environment:
-      #- OPENAI_API_KEY=$OPENAI_API_KEY
-    #volumes:
-      #- ./agents.yaml:/agents.yaml
-    #depends_on:
-      #- mcp-gateway
-      #- llama3.2
-      #- gemma
-
-  #agents-ui:
-    #image: demo/ui
-    #ports:
-      #- "3000:3000"
-    #environment:
-      #- AGENTS_URL=http://localhost:7777
-    #depends_on:
-      #- agents
+  qwen3:
+    provider:
+      type: model
+      options:
+        model: jimclark106/qwen3:4b-F16
 
   mcp-gateway:
     provider:
@@ -42,11 +26,19 @@ services:
         tools: brave_web_search,get_article,get_summary,get_related_topics,send-email
         name: research
 
+  observability:
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+
   research-agent:
     image: jimclark106/agent:latest
     depends_on:
       - llama3.2
+      - qwen3
+      - gemma
       - mcp-gateway
+      - observability
     command:
       - |
         Use any of the available tools to research the topic

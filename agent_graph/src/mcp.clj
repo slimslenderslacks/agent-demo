@@ -188,11 +188,12 @@
     (when (not (= 201 (:status response)))
       (println (format "request error: %s\nresponse: %s" m response)))))
 
+;; TODO url is hard coded hered
 (defn create-http-sse-client [url]
   (async/go
     (let [url-channel (async/promise-chan)]
       (open-sse-channel url url-channel)
-      (let [message-url (format "http://localhost:9011%s" (async/<! url-channel))]
+      (let [message-url (format "http://host.docker.internal:9011%s" (async/<! url-channel))]
         (println "use message url: " message-url)
         (HttpSSEClient.
          (partial send-sse-request message-url)
@@ -288,7 +289,7 @@
      (map ->tool-functions)))
 
   ;; HTTP SSE Client is async because it has to wait for the stream to open
-  (def client (async/<!! (create-http-sse-client "http://localhost:9011/sse/researcher")))
+  (def client (async/<!! (create-http-sse-client "http://localhost:9011/sse/research")))
   (println "done" (async/<!! (.initialize client)))
   (def tools
     (->>

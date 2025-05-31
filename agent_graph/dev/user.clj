@@ -1,11 +1,16 @@
 (ns user
   (:require
-   [clj-http.client :as http]
    [cheshire.core :as json]
+   [clj-http.client :as http]
    [clojure.core.async :as async]
    [graph]
    [mcp]
-   [openai]))
+   [openai]) 
+  (:import
+   [java.util UUID]))
+
+(def zipkin-url
+  "http://localhost:9411/api/v2/spans")
 
 (def local-url
   "http://localhost:12434/engines/llama.cpp/v1/chat/completions")
@@ -19,7 +24,21 @@
                   {:model "ai/llama3.2"
                    :messages [{:role "user" :content "hello"}]})})
     :body
-    (json/parse-string true)))
+    (json/parse-string true))
+
+  (http/post zipkin-url
+             {:body (json/generate-string
+                      [{:id "352bff9a74ca9ad2"
+                        :traceId "5af7183fb1d4cf5f" 
+                        :name "tool-call"
+                        ; epoch microsseconds
+                        :timestamp 1556604172355737
+                        ; microseconds
+                        :duration 100011
+                        :localEndpoint {:serviceName "agent"}
+                        :remoteEndpoint {:serviceName "mcp"}}])
+              :throw-exceptions false})
+  )
 
 (comment
   "making sure that the chunk handlers works with a localhost model runner"

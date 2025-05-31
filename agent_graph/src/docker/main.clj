@@ -39,31 +39,32 @@
 ;; MODEL-LLAMA3.2-MODEL_URL=http://model-runner.docker.internal/engines/v1/
 (defn -main [& args]
   (println (System/getenv))
-  (let [{endpoint "MCP-GATEWAY_ENDPOINT"
+  (let [{endpoint "MCP-GATEWAY_ENDPOINT_SSE"
          url "LLAMA3.2_URL"
          model "LLAMA3.2_MODEL"} (System/getenv)
-        client (mcp/create-streaming-client endpoint)]
+        client (mcp/create-http-sse-client endpoint)]
     (println (format "Available Models: ([%s,%s])" url model))
     (async/<!!
      (async/go
-       (println (format "initializing MCP client (gateway %s): \n" endpoint)
-                (async/<! (.initialize client)))
-       (let [tools (:tools (async/<! (.list-tools client)))]
-         (println "tools to use: "
-                  (->> tools
-                       (map mcp/->tool-functions)
-                       (map (comp :name :function))))
-         (println (format "user %s\nrun agent: (streaming disabled) ..." (first args)))
-         (pprint
-           (:messages
-             (async/<!
-               (graph/stream
-                 (graph/chat-with-tools {})
-                 {:opts {:url (format "%s/chat/completions" url)
-                         :model model
-                         :parallel_tool_calls false
-                         :stream false
-                         :client client}
-                  :functions (->> tools
-                                  (map mcp/->tool-functions))
-                  :messages [{:role "user" :content (first args)}]})))))))))
+       (let [client (async/<! (mcp/create-http-sse-client endpoint))]
+         (println (format "initializing MCP client (gateway %s): \n" endpoint)
+                  (async/<! (.initialize client)))
+         (let [tools (:tools (async/<! (.list-tools client)))]
+           (println "tools to use: "
+                    (->> tools
+                         (map mcp/->tool-functions)
+                         (map (comp :name :function))))
+           (println (format "user %s\nrun agent: (streaming disabled) ..." (first args)))
+           (pprint
+             (:messages
+               (async/<!
+                 (graph/stream
+                   (graph/chat-with-tools {})
+                   {:opts {:url (format "%s/chat/completions" url)
+                           :model model
+                           :parallel_tool_calls false
+                           :stream false
+                           :client client}
+                    :functions (->> tools
+                                    (map mcp/->tool-functions))
+                    :messages [{:role "user" :content (first args)}]}))))))))))
